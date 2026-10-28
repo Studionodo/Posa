@@ -9,7 +9,7 @@
  * vecchie vengono cancellate all'activate.
  */
 
-const CACHE = 'posa-v43';
+const CACHE = 'posa-v44';
 
 /* Cio' senza cui l'app non parte offline. Se una di queste manca c'e'
    un problema di build, non un asset decorativo assente. */

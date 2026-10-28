@@ -1,9 +1,66 @@
 # POSA — Handover completo
 
-**Versione:** v43 · repository Git inizializzato
-**Data:** 12 agosto 2026
+**Versione:** v44 · riscrittura dell'interfaccia
+**Data:** 28 ottobre 2026
 **Produzione:** https://posa-three.vercel.app
 **Sorgente locale:** `C:\Users\nicol\posa`
+
+---
+
+## 0. v44 — riscrittura dell'interfaccia (leggere prima del resto)
+
+L'interfaccia e' stata riscritta da zero sulla struttura di Ninna, tenendo
+cromie, tipografia e il motivo della pellicola. La logica dati non e' stata
+toccata: `db.js` (DB `rullino`, backup `rullino-backup` v1), `stampa.js`,
+`esporta.js` sono gli stessi. Cambiarli renderebbe illeggibili i dati e i
+backup esistenti.
+
+**Struttura.** Barra fluttuante con quattro sezioni — Rullini, Archivio,
+Strumenti, Info — sempre montate (scorrimento e conteggi non si perdono
+cambiando sezione). Sopra, una pila di schermate a tutto schermo (Rullino,
+Carica, Modifica, Sviluppo) collegata alla cronologia del browser: il tasto
+Indietro di Android torna indietro invece di chiudere l'app.
+
+**Rullini.** IN MACCHINA: una carta grande per ogni rullino in corso, con
+fotogramma, ultima posa e "Registra posa N". DA SVILUPPARE: i finiti,
+compatti. SCEGLI: selezione multipla → Sviluppato / Stampa.
+
+**Rullino.** Fotogramma in alto, quattro tessere 2×2 (Tempo, Diaframma,
+Focale, Filtro) che aprono il selettore dal basso, reciprocita' con
+conteggio, nota; schede Esposizione/Scatti e "Registra posa N" in fondo.
+Menu ⋯ come pannello dal basso.
+
+**Strumenti.** Posa lunga senza rullino aperto: pellicola, tempo misurato,
+filtro → tempo da esporre (filtro prima, reciprocita' poi) e conteggio.
+
+**Info.** Backup, Cos'e' Posa, Privacy, Ko-fi, GitHub, copyright.
+
+**Difetti corretti rispetto a v43.**
+- Modifica rullino apriva il modulo vuoto (precompilava solo da `ultimo`, che
+  in modifica non veniva passato): salvando si sovrascriveva il rullino con
+  valori predefiniti. Ora parte dal rullino stesso.
+- Conteggio di posa lunga a scatti di `setTimeout`: derivava e si fermava a
+  schermo spento. Ora calcola su un istante d'arrivo e chiede il Wake Lock.
+- Tasto Indietro di Android chiudeva l'app da qualunque schermata.
+- Eliminare uno scatto non chiedeva conferma.
+- Simboli Unicode (⎙ ◐ ▤) sostituiti da icone SVG: su Android cambiavano
+  forma a seconda del font di sistema.
+- `formattaDurata`: 59,7 s diventava "60″" invece di 1′.
+
+**Aggiunte al modello** (`model.js`): `ELENCO_EMULSIONI`, `formattaDurata`
+(da 1/8000 a ore), `correzioneSecondi` (reciprocita' su una durata
+qualsiasi), `tempoTrascorso`. `correzioneReciprocita` ora delega a
+`correzioneSecondi`: stesso risultato.
+
+**Verifica eseguita su v44.** ESLint (no-undef, rules-of-hooks, jsx-key)
+pulito; build Vite pulita; prova end-to-end in Chromium con il backup reale
+del 2 agosto: registra, modifica, elimina con conferma, Indietro di
+sistema, archivio, strumenti con conteggio che sopravvive al cambio di
+sezione, selezione, carica, modifica precompilata, sviluppo → archivio,
+schermo da 360px. Zero errori in console.
+
+Le sezioni 3 e 7 qui sotto descrivono la struttura precedente: dove
+contraddicono questa sezione, vale questa.
 
 ---
 
@@ -51,27 +108,31 @@ posa/
 ├── vite.config.js
 ├── public/
 │   ├── manifest.json           name esteso, short_name "Posa"
-│   ├── sw.js                   CACHE 'posa-v40' + PRECACHE
-│   ├── privacy.html
-│   ├── posa-logo-completo.png
+│   ├── sw.js                   CACHE 'posa-v44' + PRECACHE resiliente
+│   ├── privacy.html, about.html
 │   └── icons/                  192, 512, maskable-512 + camera.svg (sorgente)
 └── src/
-    ├── main.jsx           23   bootstrap, richiediPersistenza, SW
-    ├── App.jsx           295   stato, persistenza, navigazione
-    ├── lib/
-    │   ├── model.js      494   modello dati, scale, calcoli
-    │   ├── db.js         196   IndexedDB
-    │   ├── stampa.js     223   scheda A4 via window.print()
-    │   └── esporta.js    144   backup JSON, CSV
-    ├── components/
-    │   ├── components.jsx 350  Contatore, ListaScatti, PulsanteAzione…
-    │   └── selettore.jsx  167  Selettore modale, VoceParametro
-    ├── screens/
-    │   ├── Home.jsx       322
-    │   ├── Rullino.jsx    446
-    │   ├── NuovoRullino.jsx 196
-    │   ├── Archivio.jsx   196
-    │   └── Sviluppo.jsx   127
+    ├── main.jsx                bootstrap, richiediPersistenza, SW
+    ├── App.jsx           365   stato, pila di schermate, cronologia
+    ├── lib/                    invariati salvo model.js (vedi sezione 0)
+    │   ├── model.js      541
+    │   ├── db.js         196
+    │   ├── stampa.js     223
+    │   └── esporta.js    144
+    ├── ui/
+    │   ├── base.jsx      390   carta, pulsanti, Fotogramma, Striscia, Foglio, Campo
+    │   ├── icone.jsx     123   icone SVG a tratto
+    │   ├── selettore.jsx  85   Tessera, Selettore
+    │   ├── conteggio.jsx 143   conto alla rovescia con anello
+    │   └── schede.jsx    212   BarraSezioni, CartaInMacchina, CartaRullino
+    ├── schermate/
+    │   ├── Rullini.jsx   127
+    │   ├── Archivio.jsx   79
+    │   ├── Strumenti.jsx 115
+    │   ├── Info.jsx       77
+    │   ├── Rullino.jsx   422
+    │   ├── Caricamento.jsx 155 nuovo e modifica
+    │   └── Sviluppo.jsx   87
     └── styles/
         ├── tokens.css          palette, tipografia, reset
         └── stampa.css          @media print

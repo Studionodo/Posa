@@ -355,6 +355,30 @@ export function formattaOra(iso) {
   return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * Quanto tempo fa, detto come lo si direbbe. Un orologio del telefono
+ * indietro rispetto al dato salvato non produce "fra 3 minuti": e' adesso.
+ */
+export function tempoTrascorso(iso, adesso = Date.now()) {
+  const t = new Date(iso).getTime();
+  if (!iso || isNaN(t)) return '';
+  const min = Math.floor((adesso - t) / 60000);
+  if (min < 1) return 'adesso';
+  if (min < 60) return `${min} min fa`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h fa`;
+  const g = Math.floor(h / 24);
+  if (g === 1) return 'ieri';
+  if (g < 7) return `${g} giorni fa`;
+  // "1 ago" accanto a "2 h fa" si legge come "un'ora fa": il mese va per esteso.
+  const d = new Date(t);
+  const mese = d.toLocaleDateString('it-IT', { month: 'long' });
+  const giorno = d.getDate();
+  if (giorno === 1) return `il 1\u00b0 ${mese}`;
+  if (giorno === 8 || giorno === 11) return `l\u2019${giorno} ${mese}`;
+  return `il ${giorno} ${mese}`;
+}
+
 // ─── DIFETTO DI RECIPROCITA' ────────────────────────────────
 
 /**
@@ -374,28 +398,28 @@ export function formattaOra(iso) {
 const EMULSIONI = [
   // Fuji Acros: praticamente immune fino a 120 secondi. E' il motivo
   // per cui e' la pellicola delle lunghe esposizioni.
-  { cerca: ['acros'], p: 1.00, soglia: 120, nota: 'Nessuna correzione fino a 2 minuti' },
+  { nome: 'Fuji Acros', cerca: ['acros'], p: 1.00, soglia: 120, nota: 'Nessuna correzione fino a 2 minuti' },
 
   // Kodak T-grain: molto migliori delle tradizionali
-  { cerca: ['t-max', 'tmax', 't max'], p: 1.14, soglia: 1 },
-  { cerca: ['delta'], p: 1.16, soglia: 1 },
+  { nome: 'Kodak T-Max', cerca: ['t-max', 'tmax', 't max'], p: 1.14, soglia: 1 },
+  { nome: 'Ilford Delta', cerca: ['delta'], p: 1.16, soglia: 1 },
 
   // Bianco e nero tradizionali
-  { cerca: ['hp5', 'hp 5'], p: 1.31, soglia: 1 },
-  { cerca: ['fp4', 'fp 4'], p: 1.26, soglia: 1 },
-  { cerca: ['tri-x', 'trix', 'tri x'], p: 1.28, soglia: 1 },
-  { cerca: ['pan f'], p: 1.33, soglia: 1 },
-  { cerca: ['kentmere'], p: 1.30, soglia: 1 },
+  { nome: 'Ilford HP5', cerca: ['hp5', 'hp 5'], p: 1.31, soglia: 1 },
+  { nome: 'Ilford FP4', cerca: ['fp4', 'fp 4'], p: 1.26, soglia: 1 },
+  { nome: 'Kodak Tri-X', cerca: ['tri-x', 'trix', 'tri x'], p: 1.28, soglia: 1 },
+  { nome: 'Ilford Pan F', cerca: ['pan f'], p: 1.33, soglia: 1 },
+  { nome: 'Kentmere', cerca: ['kentmere'], p: 1.30, soglia: 1 },
 
   // Negative a colori: correzioni contenute
-  { cerca: ['portra'], p: 1.10, soglia: 1 },
-  { cerca: ['ektar'], p: 1.12, soglia: 1 },
-  { cerca: ['gold', 'colorplus', 'ultramax'], p: 1.15, soglia: 1 },
+  { nome: 'Kodak Portra', cerca: ['portra'], p: 1.10, soglia: 1 },
+  { nome: 'Kodak Ektar', cerca: ['ektar'], p: 1.12, soglia: 1 },
+  { nome: 'Kodak Gold', cerca: ['gold', 'colorplus', 'ultramax'], p: 1.15, soglia: 1 },
 
   // Diapositive: correzioni forti, e sopra il minuto vira il colore
-  { cerca: ['velvia'], p: 1.30, soglia: 1, nota: 'Sopra 60s vira: serve filtro correttivo' },
-  { cerca: ['provia'], p: 1.10, soglia: 1, nota: 'Buona fino a 128s' },
-  { cerca: ['ektachrome'], p: 1.20, soglia: 1 },
+  { nome: 'Fuji Velvia', cerca: ['velvia'], p: 1.30, soglia: 1, nota: 'Sopra 60s vira: serve filtro correttivo' },
+  { nome: 'Fuji Provia', cerca: ['provia'], p: 1.10, soglia: 1, nota: 'Buona fino a 128s' },
+  { nome: 'Kodak Ektachrome', cerca: ['ektachrome'], p: 1.20, soglia: 1 },
 ];
 
 /** Valore prudente per emulsioni non riconosciute (b&n tradizionale). */
@@ -419,20 +443,38 @@ export function tempoInSecondi(tempo) {
   return n ? 1 / n : null;
 }
 
-function formattaSecondi(s) {
-  if (s < 10) return `${s.toFixed(1).replace(/\.0$/, '')}"`;
-  if (s < 60) return `${Math.round(s)}"`;
-  const m = Math.floor(s / 60);
-  const r = Math.round(s % 60);
-  return r ? `${m}′ ${r}″` : `${m}′`;
+/** Nomi delle emulsioni riconosciute, per sceglierle senza un rullino aperto. */
+export const ELENCO_EMULSIONI = EMULSIONI.map((e) => e.nome);
+
+/**
+ * Durata leggibile, da 1/8000 a ore. Sotto il secondo torna la notazione
+ * dell'otturatore: un 1/500 dietro un ND da 2 stop e' un 1/125, non 0,008 s.
+ */
+export function formattaDurata(s) {
+  if (!s || s <= 0 || !isFinite(s)) return '\u2014';
+  if (s < 1) return `1/${Math.round(1 / s)}`;
+  if (s < 9.95) return `${s.toFixed(1).replace(/\.0$/, '')}\u2033`;
+  // Si arrotonda una volta sola, prima di scegliere l'unita':
+  // 59,7 secondi sono 1 minuto, non "60 secondi".
+  const t = Math.round(s);
+  if (t < 60) return `${t}\u2033`;
+  if (t < 3600) {
+    const m = Math.floor(t / 60);
+    const r = t % 60;
+    return r ? `${m}\u2032 ${r}\u2033` : `${m}\u2032`;
+  }
+  const h = Math.floor(t / 3600);
+  const m = Math.round((t % 3600) / 60);
+  if (m === 60) return `${h + 1} h`;
+  return m ? `${h} h ${m}\u2032` : `${h} h`;
 }
 
 /**
- * Correzione per il tempo selezionato su questo rullino.
+ * Correzione per una durata in secondi, qualunque sia la sua origine:
+ * un tempo della ghiera, o un tempo gia' allungato da un filtro ND.
  * Restituisce null se non serve — sotto la soglia dell'emulsione.
  */
-export function correzioneReciprocita(tempo, pellicola) {
-  const sec = tempoInSecondi(tempo);
+export function correzioneSecondi(sec, pellicola) {
   if (!sec || sec < 1) return null;
 
   const e = riconosciEmulsione(pellicola);
@@ -444,13 +486,18 @@ export function correzioneReciprocita(tempo, pellicola) {
   if (stop < 0.15) return null;   // sotto un sesto di stop non vale la pena
 
   return {
-    misurato: formattaSecondi(sec),
-    corretto: formattaSecondi(corretto),
+    misurato: formattaDurata(sec),
+    corretto: formattaDurata(corretto),
     secondi: corretto,
     stop: Math.round(stop * 10) / 10,
     ignota: !!e.ignota,
     nota: e.nota || null,
   };
+}
+
+/** Correzione per il tempo selezionato su questo rullino. */
+export function correzioneReciprocita(tempo, pellicola) {
+  return correzioneSecondi(tempoInSecondi(tempo), pellicola);
 }
 
 // ─── FILTRI ─────────────────────────────────────────────────
